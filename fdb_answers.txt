@@ -1,1 +1,39 @@
+Q1: FDB decouples the Transaction Management System and Storage System to allow transaction 
+coordinations and data storage to optimized independently based on workload. The TMS handles all 
+transaction ordering, conflict detection, commit versioning, durability logging, and other complex 
+transaction related tasks. The SS handles the persistent storage, distribution and serving of key-
+value data in the database. By separating these two things the system can now recover fast from 
+transaction failures by having no need to touch the stored data, scale either the SS or TMS 
+without needing to touch the other, and also optimize each layer independentely, saving time and 
+effort.
 
+Q2: During a write trasaction in FDB the Resolver is responsible for detecting read-write 
+conflicts between concurrent transactions. This check occurs during the commit process after a 
+transaction is submitted by the client into the database, but before the mutations are written 
+into the LogServers. This is because of FDB using Optimistic Concurrency Control where conflicts 
+are resolved at commit phase. Once a conflict is detected though the transaction is aborted and 
+the client is told to reattempt it. 
+
+Q3: The read version acts as a snapshot timestamp that determines which version of the database 
+the transaction can read, this ensures that the transactions read a stable point-in-time even as 
+other transactions commit concurrently. The Resolvers later check if any keys the transaction read 
+were modified by a commit that happened after the read version, and this allows conflicts to be 
+caught before being written. So this is how FDB is able to garuntee strict serializability wihtout 
+needing to lock rows during reads from a transaction.
+
+Q4: Snapshot reads differ from standard reads becuase they do not add keys to the read-set of a 
+transaction and so they bypass conflict detection. In Standard reads the accessed keys are added 
+to a transaction's read-set so if another transaction modifies any of the keys before the current 
+transaction commits, the current transction will abort due to a conflict detection. Since you do 
+not get conflict detection for Snapshot reads it is only useful if you are not writing to the row. 
+So, it would be good for read-only queries where stale data is acceptable and concurrent writes 
+changing data would not fail the transaction, like for example for reading metadata or long-
+running analytics.
+
+Q5: FDB claims that recovery is cheap because StorageServers continously pull and apply mutations 
+from LogServers during normal operations. So, a majority of the data is already durable on disk 
+before any failures happen. LogServers are logs for real-time mutations that the StorageServers 
+asynchronously pull to update data. So in a failure, there is no need for a large redo log to 
+replay since the system only needs to bring back the Transaction Management layer and let the 
+StorageServers catach up to the last committed version from the LogServers, therefore keeping the 
+recovery path fast and cheap.
